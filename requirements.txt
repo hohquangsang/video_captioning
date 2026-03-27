@@ -1,0 +1,10 @@
+Flask==3.1.2
+flask_cors==6.0.1
+googletrans==4.0.2
+numpy==2.3.5
+opencv_python==4.11.0.86
+Pillow==12.0.0
+timm==1.0.22
+torch==2.6.0
+torchvision==0.21.0
+transformers==4.57.3

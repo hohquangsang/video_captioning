@@ -1,0 +1,12 @@
+Tạo môi trường ảo:
+python -m venv .venv     
+
+Nếu bạn không muốn làm lại mỗi lần mở VS Code:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+
+Sau đó đóng VS Code → mở lại terminal → kích hoạt lại:
+.\.venv\Scripts\Activate.ps1\
+
+Tải thư viện từ tập requirements.txt:
+pip install -r requirements.txt

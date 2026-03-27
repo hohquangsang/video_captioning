@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Image captioning - Distance Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; transition: background-color 0.3s; }
+        video { width: 100%; max-width: 640px; border-radius: 8px; border: 2px solid #333; }
+        #result { margin-top: 20px; font-size: 1.2rem; }
+        .status { font-size: 0.9rem; color: gray; margin-bottom: 10px; }
+        
+        /* Style cho dòng khoảng cách */
+        #dist-line { color: #28a745; font-weight: bold; font-size: 1.4rem; margin-bottom: 5px; }
+        .danger { color: #dc3545 !important; animation: blink 0.5s infinite; }
+        
+        @keyframes blink { 50% { opacity: 0.2; } }
+    </style>
+</head>
+<body>
+    <h1>Hệ thống Hỗ trợ Khiếm thị</h1>
+    <p class="status" id="status">Đang khởi động Camera...</p>
+    
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    
+    <div id="result">
+        <p id="dist-line"><span id="text-dist">Đang đo...</span></p>
+
+        <p style="color: #d32f2f; font-weight: bold; font-size: 1.5rem;">VI: <span id="text-vi">Đang chờ...</span></p>
+
+    </div>
+
+<script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const textEn = document.getElementById('text-en');
+        const textVi = document.getElementById('text-vi');
+        const textDist = document.getElementById('text-dist');
+        const distLine = document.getElementById('dist-line');
+        const status = document.getElementById('status');
+
+        let isProcessing = false;
+        
+        // --- BIẾN ĐỂ KIỂM SOÁT GIỌNG NÓI ---
+        let lastSpokenCaption = ""; // Lưu caption lần trước (không kèm khoảng cách)
+        let lastSpeakTime = 0;      // Lưu thời điểm vừa nói
+        const SPEAK_COOLDOWN = 8000; // 8 giây mới được nói lại (nếu cảnh vẫn thế)
+
+        // 1. Mở Webcam
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(stream => { 
+                video.srcObject = stream; 
+                status.innerText = "Camera sẵn sàng.";
+            })
+            .catch(err => { 
+                console.error(err); 
+                status.innerText = "Lỗi Camera (Hãy dùng HTTPS hoặc localhost)!";
+            });
+
+        // 2. Hàm đọc TTS (Đã nâng cấp)
+        function smartSpeak(text, captionOnly, isWarning) {
+            const now = Date.now();
+            
+            // TH1: Nếu là cảnh báo nguy hiểm -> Đọc ngay lập tức, không chờ
+            if (isWarning) {
+                forceSpeak(text);
+                lastSpeakTime = now;
+                return;
+            }
+
+            // TH2: Nếu caption thay đổi (Ví dụ: Chó -> Mèo) -> Đọc ngay
+            if (captionOnly !== lastSpokenCaption) {
+                forceSpeak(text);
+                lastSpokenCaption = captionOnly;
+                lastSpeakTime = now;
+                return;
+            }
+
+            // TH3: Nếu caption giống hệt cũ (vẫn là con chó), nhưng đã quá 8 giây -> Nhắc lại
+            if (now - lastSpeakTime > SPEAK_COOLDOWN) {
+                forceSpeak(text);
+                lastSpeakTime = now;
+            }
+            
+            // Còn lại: Im lặng (để tránh điếc tai vì khoảng cách nhảy số)
+        }
+
+        function forceSpeak(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Dừng câu cũ
+                const u = new SpeechSynthesisUtterance(text);
+                u.lang = 'vi-VN'; 
+                u.rate = 1.0; 
+                window.speechSynthesis.speak(u);
+            }
+        }
+
+        // 3. Vòng lặp gửi ảnh (Giữ nguyên 3 giây/lần)
+        setInterval(async () => {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            // Vẽ ảnh lên canvas
+            canvas.width = 640; canvas.height = 480;
+            ctx.drawImage(video, 0, 0, 640, 480);
+            const imageData = canvas.toDataURL('image/jpeg', 0.5); 
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+                const result = await response.json();
+                
+                // Hiển thị Text lên màn hình
+                textVi.innerText = result.caption_vi;
+                
+                let isDanger = false;
+
+                // Xử lý giao diện Cảnh báo
+                if (result.warning) {
+                    textDist.innerText = result.warning + " (" + result.distance + ")";
+                    distLine.className = "danger"; 
+                    document.body.style.backgroundColor = "#ffecec";
+                    isDanger = true;
+                } else {
+                    textDist.innerText = "Khoảng cách: " + result.distance;
+                    distLine.className = ""; 
+                    document.body.style.backgroundColor = "white";
+                }
+
+                // GỌI HÀM ĐỌC THÔNG MINH
+                // result.final_speech: Câu đầy đủ (gồm khoảng cách)
+                // result.caption_vi: Chỉ nội dung vật thể (để so sánh)
+                smartSpeak(result.final_speech, result.caption_vi, isDanger);
+
+            } catch (error) {
+                console.error("Lỗi:", error);
+            } finally {
+                isProcessing = false;
+            }
+        }, 6000); 
+    </script>
+</body>
+</html>
